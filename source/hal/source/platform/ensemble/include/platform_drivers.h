@@ -62,6 +62,7 @@ void platform_release(void);
  */
 const char* platform_name(void);
 
+typedef void (*message_callback_t)(char *message);
 
 #ifdef SE_SERVICES_SUPPORT
 extern uint32_t set_power_off_profile(off_profile_t offprof);
@@ -72,7 +73,8 @@ extern void enable_mipi_power(void);
 
 extern bool run_requested(void);
 extern void init_trigger_rx(void);
-extern void init_trigger_tx(void);
+// extern void init_trigger_tx(void);
+extern void init_trigger_tx(message_callback_t cb);
 
 #ifdef __cplusplus
 }

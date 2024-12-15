@@ -78,26 +78,26 @@ void user_message_callback(char *message) {
     info("Message received in user callback: %s\n", message);
 }
 
-bool last_btn2 = false; 
+bool last_btn1 = false; 
 
-bool run_requested_btn_2(void)
+bool run_requested_(void)
 {
     bool ret = false; // Default to no inference
-    bool new_btn2;
-    BOARD_BUTTON_STATE btn_state2;
+    bool new_btn1;
+    BOARD_BUTTON_STATE btn_state1;
 
     // Get the new button state (active low)
-    BOARD_BUTTON3_GetState(&btn_state2);
-    new_btn2 = (btn_state2 == BOARD_BUTTON_STATE_LOW); // true if button is pressed
+    BOARD_BUTTON1_GetState(&btn_state1);
+    new_btn1 = (btn_state1 == BOARD_BUTTON_STATE_LOW); // true if button is pressed
 
     // Edge detector - run inference on the positive edge of the button pressed signal
-    if (new_btn2 && !last_btn2) // Check for transition from not pressed to pressed
+    if (new_btn1 && !last_btn1) // Check for transition from not pressed to pressed
     {
         ret = true; // Inference requested
     }
 
     // Update the last button state
-    last_btn2 = new_btn2;
+    last_btn1 = new_btn1;
 
     return ret; // Return whether inference should be run
 }
@@ -192,19 +192,13 @@ void main_loop()
     // caseContext.Set<std::string&>("my_name", myName);
     caseContext.Set<std::string>("my_name", "");
 
-    std::string whoAmI = "";
-    caseContext.Set<std::string>("person_id", whoAmI);
-
     bool avgEmbFlag = false;
     int loop_idx = 0;
     int32_t ret;
 
-    int32_t mode = 0; // 0 - registration mode, 1 inference mode
-    int32_t last_mode = 0;
-
     while(1) {
 
-        alif::app::ObjectDetectionHandler(caseContext, mode);
+        alif::app::ObjectDetectionHandler(caseContext);
 
         // KWS mode
         if (receivedMessage[0] != '\0') {
@@ -219,73 +213,54 @@ void main_loop()
             memset(receivedMessage, '\0', MAX_MESSAGE_LENGTH); // clear the massage buffer
         }
 
-        // inference mode    
-        if (run_requested_btn_2())
-        {   
-            mode = 1;
-            info("swithing to inference mode \n");
-            continue;
-        }
+        // Button press mode    
+        // if (run_requested_())
+        // {   
+        //     myName = alif::app::ClassifyAudioHandler(
+        //                             caseContext,
+        //                             1,
+        //                             false);
+                                    
+        //     info("recognition Name : %s \n", myName.c_str());
+        // }
 
         /* extract the facial embedding and register the person */
-        if (mode == 0){
-            if (caseContext.Get<bool>("face_detected_flag") && !myName.empty()) { 
-                avgEmbFlag = true;
-                info("registration .. \n");
+        if (caseContext.Get<bool>("face_detected_flag") && !myName.empty()) { 
+            avgEmbFlag = true;
+            info("registration .. \n");
 
-                if (avgEmbFlag && (loop_idx < 2)){
-                    info("Averaging embeddings .. \n");
-                    alif::app::ClassifyImageHandler(caseContext, mode); 
-                    sleep_or_wait_msec(1000); /* wait for possible pose changes */
-                    loop_idx ++; 
-                }else {
-                    avgEmbFlag = false;
-                    loop_idx = 0;
+            if (avgEmbFlag && (loop_idx < 2)){
+                info("Averaging embeddings .. \n");
+                alif::app::ClassifyImageHandler(caseContext); 
+                sleep_or_wait_msec(1000); /* wait for possible pose changes */
+                loop_idx ++; 
+            }else {
+                avgEmbFlag = false;
+                loop_idx = 0;
 
-                    // average the embedding fro the myName
-                    faceEmbeddingCollection.CalculateAverageEmbeddingAndSave(myName);
-                    info("Averaging finished and saved .. \n");
+                // average the embedding fro the myName
+                faceEmbeddingCollection.CalculateAverageEmbeddingAndSave(myName);
+                info("Averaging finished and saved .. \n");
 
-                    // faceEmbeddingCollection.PrintEmbeddings();
+                // faceEmbeddingCollection.PrintEmbeddings();
 
-                    /* save embedding data to external flash  */
-                    ret = flash_send(faceEmbeddingCollection);
+                /* save embedding data to external flash  */
+                ret = flash_send(faceEmbeddingCollection);
 
-                    // /*TODO : create a seperate application to read data from the flash memory and write to RegistrationData.hpp */
-                    // ret = ospi_flash_read_collection(stored_collection);
-                    // // ret = read_collection_from_file(stored_collection);
-                    // stored_collection.PrintEmbeddings();
-                    ospi_flash_read_dummy();
-
-                    caseContext.Set<bool>("face_detected_flag", false); // Reset flag 
-                    myName.clear();
-
-                    caseContext.Set<std::string>("my_name", myName);
-
-                    info("reg done .. \n");
-
-                }
-            }  
-        }
-         else if (mode == 1)
-        {
-            if (last_mode != mode){
-                // retrieve the person registration data
+                // /*TODO : create a seperate application to read data from the flash memory and write to RegistrationData.hpp */
                 ret = ospi_flash_read_collection(stored_collection);
-                // stored_collection.PrintEmbeddings();
-                /* Save the face embedding collection in context */
-                caseContext.Set<FaceEmbeddingCollection&>("recorded_face_embedding_collection", stored_collection);
+                // // ret = read_collection_from_file(stored_collection);
+                stored_collection.PrintEmbeddings();
 
-                info("data loaded correctly \n");
+                caseContext.Set<bool>("face_detected_flag", false); // Reset flag 
+                myName.clear();
+
+                caseContext.Set<std::string>("my_name", myName);
+
+                info("reg done .. \n");
+
             }
-            alif::app::ClassifyImageHandler(caseContext, mode);  // Run feature extraction
-            sleep_or_wait_msec(100); // keep some delay here
-            
-            
-        } // end inference
- 
-
-        last_mode = mode; 
+        }  
         
     }
     

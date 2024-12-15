@@ -92,10 +92,10 @@ lv_color_t  lvgl_image[LIMAGE_Y][LIMAGE_X] __attribute__((section(".bss.lcd_imag
 static uint8_t black_image_data[LIMAGE_X * LIMAGE_Y * 3]
     __attribute__((section(".bss.black_image")));
 
-
 /* Move here due to heap limitation */
 static uint8_t dstImage[MIMAGE_X * MIMAGE_X * 3]
     __attribute__((section(".bss.sram1")));
+
 
 using arm::app::Profiler;
 using arm::app::ApplicationContext;
@@ -104,7 +104,6 @@ using arm::app::YoloFastestModel;
 using arm::app::DetectorPreProcess;
 using arm::app::DetectorPostProcess;
 using arm::app::ImgClassPreProcess; 
-
 
 namespace alif {
 namespace app {
@@ -228,23 +227,13 @@ namespace app {
     }
 
     /* Function to process cropped faces to get the embedding vector */
-    bool ClassifyImageHandler(ApplicationContext& ctx, int32_t mode) {
+    bool ClassifyImageHandler(ApplicationContext& ctx) {
 
         auto& profiler = ctx.Get<Profiler&>("profiler");
         auto& model = ctx.Get<Model&>("recog_model");
 
         // Retrieve the name 
-        // auto my_name = ctx.Get<std::string>("my_name");
-        std::string my_name;  
-        SimilarityResult identified_person;
-
-        if (mode == 0){
-            // Retrieve the name 
-            my_name = ctx.Get<std::string>("my_name");
-        }else if (mode == 1)
-        {
-            my_name = "inference";
-        }
+        auto my_name = ctx.Get<std::string>("my_name");
 
         // Retrieve the cropped_images vector from the context
         auto croppedImages = ctx.Get<std::shared_ptr<std::vector<CroppedImageData>>>("cropped_images");
@@ -255,12 +244,8 @@ namespace app {
             return false;
         }
 
-        // Retrieve the face embedding collection recorded_face_embedding_collection
-        // auto& embeddingCollection = ctx.Get<FaceEmbeddingCollection&>("face_embedding_collection");
-        FaceEmbeddingCollection& embeddingCollection = 
-                (mode == 0) 
-                ? ctx.Get<FaceEmbeddingCollection&>("face_embedding_collection") 
-                : ctx.Get<FaceEmbeddingCollection&>("recorded_face_embedding_collection");
+        // Retrieve the face embedding collection
+        auto& embeddingCollection = ctx.Get<FaceEmbeddingCollection&>("face_embedding_collection");
 
         if (!model.IsInited()) {
             printf_err("Model is not initialised! Terminating processing.\n");
@@ -324,19 +309,7 @@ namespace app {
                                                     outputTensor->data.int8 + outputTensor->bytes);
 
             // Save the feature vector along with the name in the embedding collection
-            // embeddingCollection.AddEmbedding(my_name, int8_feature_vector);
-
-            if (mode == 0){
-                // Save the feature vector along with the name in the embedding collection
-                embeddingCollection.AddEmbedding(my_name, int8_feature_vector);
-            }else if (mode == 1)
-            {
-                // std::string mostSimilarPerson = embeddingCollection.FindMostSimilarEmbedding(int8_feature_vector);
-                // ctx.Set<std::string>("person_id", mostSimilarPerson);
-
-                identified_person = embeddingCollection.FindMostSimilarEmbedding(int8_feature_vector);
-                ctx.Set<std::string>("person_id", identified_person.name);
-            }
+            embeddingCollection.AddEmbedding(my_name, int8_feature_vector);
 
             // free(dstImage);
 
@@ -349,20 +322,11 @@ namespace app {
             printf_err("Failed to retrieve cropped_images from context.\n");
         }
 
-        if (mode == 0){
-            {
+        {
             ScopedLVGLLock lv_lock;
             lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "Pose Now !! ");
 
-            } // ScopedLVGLLock
-        }else if (mode == 1)
-        {
-           {
-            ScopedLVGLLock lv_lock;
-            lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "Recognition score : %.3f", identified_person.similarity);
-
-            } // ScopedLVGLLock
-        }
+        } // ScopedLVGLLock
 
         return true;
     }
@@ -374,7 +338,7 @@ namespace app {
 
         ScreenLayoutInit(lvgl_image, sizeof lvgl_image, LIMAGE_X, LIMAGE_Y, LV_ZOOM);
         uint32_t lv_lock_state = lv_port_lock();
-        lv_label_set_text_static(ScreenLayoutHeaderObject(), "Person registration App");
+        lv_label_set_text_static(ScreenLayoutHeaderObject(), "Face Detection");
         lv_label_set_text_static(ScreenLayoutLabelObject(0), "Faces Detected: 0");
         lv_label_set_text_static(ScreenLayoutLabelObject(1), "Registered: 0");
         lv_label_set_text_static(ScreenLayoutLabelObject(2), "");
@@ -410,6 +374,14 @@ namespace app {
     }
 
     /**
+     * @brief           Presents inference results along using the data presentation
+     *                  object.
+     * @param[in]       results            Vector of detection results to be displayed.
+     * @return          true if successful, false otherwise.
+     **/
+    static bool PresentInferenceResult(const std::vector<object_detection::DetectionResult>& results);
+
+    /**
      * @brief           Draw boxes directly on the LCD for all detected objects.
      * @param[in]       results            Vector of detection results to be displayed.
      **/
@@ -419,23 +391,13 @@ namespace app {
 
 
     /* Object detection inference handler. */
-    bool ObjectDetectionHandler(ApplicationContext& ctx, int32_t mode)
+    bool ObjectDetectionHandler(ApplicationContext& ctx)
     {
         auto& profiler = ctx.Get<Profiler&>("profiler");
         auto& model = ctx.Get<Model&>("det_model");
 
         // Retrieve the name 
-        // auto my_name = ctx.Get<std::string>("my_name");
-
-        std::string my_name;  
-
-        if (mode == 0){
-            // Retrieve the name 
-            my_name = ctx.Get<std::string>("my_name");
-        }else if (mode == 1)
-        {
-            my_name = "inference";
-        }
+        auto my_name = ctx.Get<std::string>("my_name");
 
         if (!model.IsInited()) {
             printf_err("Model is not initialised! Terminating processing.\n");
@@ -501,17 +463,12 @@ namespace app {
                 return false;
             }
 
-            sleep_or_wait_msec(50);
-
             /* Run inference over this image. */
 
             if (!RunInference(model, profiler)) {
                 printf_err("Inference failed.");
                 return false;
             }
-
-            sleep_or_wait_msec(50); ////// stuck here
-
 
             if (!postProcess.DoPostProcess()) {
                 printf_err("Post-processing failed.");
@@ -523,43 +480,40 @@ namespace app {
                 return false;
             }
 
-            // lv_label_set_text_fmt(ScreenLayoutHeaderObject(), "Face Detection");
+            lv_label_set_text_fmt(ScreenLayoutHeaderObject(), "Face Detection");
             lv_label_set_text_fmt(ScreenLayoutLabelObject(0), "Faces Detected: %i", results.size());
 
-            // if (ctx.Get<bool>("face_detected_flag")) {
-            //     lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Registered: %s", my_name.c_str()); // display the registered person name
-            // }else {
-            //     lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Registered: 0");
-            // }
-
-            if (mode == 0){
-                lv_label_set_text_fmt(ScreenLayoutHeaderObject(), "MODE: Registration");
-            
-                if (ctx.Get<bool>("face_detected_flag")) {
-                    lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Registered: %s", my_name.c_str()); // display the registered person name
-                }else {
-                    // lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "");
-                    lv_label_set_text(ScreenLayoutLabelObject(1), "");
-                }
-
-            }else if (mode == 1)
-            {
-                lv_label_set_text_fmt(ScreenLayoutHeaderObject(), "MODE: Inference");
-                auto whoAmI = ctx.Get<std::string>("person_id");  // retrieve the person ID
-            lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Name : %s", whoAmI.c_str());
+            if (ctx.Get<bool>("face_detected_flag")) {
+                lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Registered: %s", my_name.c_str()); // display the registered person name
+            }else {
+                lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Registered: 0");
             }
 
             // ctx.Set<bool>("buttonflag", false);
 
             }
 
-            //  lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "");
-             lv_label_set_text(ScreenLayoutLabelObject(2), "");
+             lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "");
 
             /* Draw boxes. */
             DrawDetectionBoxes(results, inputImgCols, inputImgRows);
 
         } // ScopedLVGLLock
+
+        return true;
+    }
+
+    static bool PresentInferenceResult(const std::vector<object_detection::DetectionResult>& results)
+    {
+        /* If profiling is enabled, and the time is valid. */
+        info("Final results:\n");
+        info("Total number of inferences: 1\n");
+
+        for (uint32_t i = 0; i < results.size(); ++i) {
+            info("%" PRIu32 ") (%f) -> %s {x=%d,y=%d,w=%d,h=%d}\n", i,
+                results[i].m_normalisedVal, "Detection box:",
+                results[i].m_x0, results[i].m_y0, results[i].m_w, results[i].m_h );
+        }
 
         return true;
     }
@@ -599,17 +553,6 @@ namespace app {
         auto mfccFrameStride = ctx.Get<uint32_t>("frameStride");
         auto scoreThreshold  = ctx.Get<float>("scoreThreshold");
         auto inputCtxLen     = ctx.Get<uint32_t>("ctxLen");     
-
-        {
-            ScopedLVGLLock lv_lock;
-
-            lv_obj_t *frame = ScreenLayoutImageHolderObject();
-            DeleteBoxes(frame);
-            lv_label_set_text(ScreenLayoutLabelObject(0), "");
-            ReplaceImageWithBlack();
-            // lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "");
-            lv_label_set_text(ScreenLayoutLabelObject(1), "");
-        }
 
         if (!model.IsInited()) {
             printf_err("Model is not initialised! Terminating processing.\n");
@@ -655,7 +598,10 @@ namespace app {
         // // const int16_t* audio_inf = audio_inf_vector.data(); 
 
         /* make screen black (better than sucked image) */
-        
+        {
+            ScopedLVGLLock lv_lock;
+            ReplaceImageWithBlack();
+        }
 
         uint32_t audioArrSize = AUDIO_SAMPLES_KWS; // 16000 + 8000;
 

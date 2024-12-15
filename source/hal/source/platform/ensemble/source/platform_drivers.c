@@ -65,6 +65,8 @@ uint32_t tprof1, tprof2, tprof3, tprof4, tprof5;
 /** Platform name */
 static const char* s_platform_name = DESIGN_NAME;
 
+static message_callback_t user_callback = NULL;
+
 #ifdef SE_SERVICES_SUPPORT
 extern uint32_t services_handle;
 
@@ -74,13 +76,27 @@ off_profile_t default_offprof;
 static void MHU_msg_received(void* data);
 
 // IPC callback
+// static void ipc_rx_callback(void *data)
+// {
+//     m55_data_payload_t* payload = (m55_data_payload_t*)data;
+//     char *st = (char*)payload->msg;
+//     uint16_t id = payload->id;
+//     printf("****** Got message from other CPU: %s, id: %d\n", st, id);
+// }
+
 static void ipc_rx_callback(void *data)
 {
     m55_data_payload_t* payload = (m55_data_payload_t*)data;
     char *st = (char*)payload->msg;
+
+    if (user_callback) {
+        user_callback(st);  // Call the user's callback with the message
+    }
+
     uint16_t id = payload->id;
-    printf("****** Got message from other CPU: %s, id: %d\n", st, id);
+    info("****** Got message from other CPU: %s, id: %d\n", st, id);
 }
+
 #endif
 
 #ifdef COPY_VECTORS
@@ -133,9 +149,9 @@ static uint32_t set_power_profiles()
     default_runprof.memory_blocks   = SERAM_MASK | SRAM0_MASK | SRAM1_MASK | MRAM_MASK | FWRAM_MASK | BACKUP4K_MASK;
     default_runprof.phy_pwr_gating  = LDO_PHY_MASK | MIPI_PLL_DPHY_MASK | MIPI_TX_DPHY_MASK | MIPI_RX_DPHY_MASK;
     default_runprof.ip_clock_gating = MIPI_DSI_MASK | CDC200_MASK | MIPI_CSI_MASK | CAMERA_MASK | LP_PERIPH_MASK | NPU_HE_MASK | NPU_HP_MASK;
-#ifdef OSPI_FLASH_SUPPORT
+// #ifdef OSPI_FLASH_SUPPORT
     default_runprof.ip_clock_gating |= OSPI_1_MASK;
-#endif
+// #endif
 #ifdef M55_HE
     default_runprof.cpu_clk_freq    = CLOCK_FREQUENCY_160MHZ;
 #elif M55_HP
@@ -325,11 +341,19 @@ void init_trigger_rx(void)
     BOARD_BUTTON2_Init(NULL);
 }
 
-void init_trigger_tx(void)
-{
-#ifdef SE_SERVICES_SUPPORT
+// void init_trigger_tx(void)
+// {
+// #ifdef SE_SERVICES_SUPPORT
+//     services_init(ipc_rx_callback);
+// #endif
+// }
+
+void init_trigger_tx(message_callback_t cb)
+{   
+    #ifdef SE_SERVICES_SUPPORT
+    user_callback = cb;
     services_init(ipc_rx_callback);
-#endif
+    #endif
 }
 
 #if BOARD_BUTTON_COUNT < 2
@@ -341,6 +365,9 @@ static bool last_btn2 = false;
 #endif
 
 #ifdef SE_SERVICES_SUPPORT
+
+
+
 static void MHU_msg_received(void* data)
 {
     m55_data_payload_t* payload = data;
@@ -369,42 +396,7 @@ static void MHU_msg_received(void* data)
 
 bool run_requested(void)
 {
-#if BOARD_BUTTON_COUNT < 2
-
-    bool ret = true;
-    if (do_inference_once)
-    {
-        ret = false;
-    }
-    return ret;
-
-#else
-
-    bool ret = true;
-    bool new_btn1, new_btn2;
-    BOARD_BUTTON_STATE btn_state1, btn_state2;
-
-    // Get new button state (active low)
-    BOARD_BUTTON1_GetState(&btn_state1);
-    BOARD_BUTTON2_GetState(&btn_state2);
-    new_btn1 = btn_state1 == BOARD_BUTTON_STATE_LOW;
-    new_btn2 = btn_state2 == BOARD_BUTTON_STATE_LOW;
-
-    if (do_inference_once)
-    {
-        // Edge detector - run inference on the positive edge of the button pressed signal
-        ret = !last_btn1 && new_btn1;
-    }
-    if (new_btn2 && last_btn2 != new_btn2)
-    {
-        // Switch single shot and continuous inference mode
-        do_inference_once ^= 1;
-    }
-    last_btn1 = new_btn1;
-    last_btn2 = new_btn2;
-    return ret;
-
-#endif
+    return do_inference_once;
 }
 
 uint64_t ethosu_address_remap(uint64_t address, int index)

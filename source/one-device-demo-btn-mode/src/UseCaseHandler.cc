@@ -92,11 +92,6 @@ lv_color_t  lvgl_image[LIMAGE_Y][LIMAGE_X] __attribute__((section(".bss.lcd_imag
 static uint8_t black_image_data[LIMAGE_X * LIMAGE_Y * 3]
     __attribute__((section(".bss.black_image")));
 
-
-/* Move here due to heap limitation */
-static uint8_t dstImage[MIMAGE_X * MIMAGE_X * 3]
-    __attribute__((section(".bss.sram1")));
-
 using arm::app::Profiler;
 using arm::app::ApplicationContext;
 using arm::app::Model;
@@ -278,11 +273,11 @@ namespace app {
             int height = croppedImageData.height;
 
             // Allocate memory for the destination image
-            // uint8_t *dstImage = (uint8_t *)malloc(nCols * nRows * 3);
-            // if (!dstImage) {
-            //     perror("Failed to allocate memory for destination image");
-            //     return false;
-            // }
+            uint8_t *dstImage = (uint8_t *)malloc(nCols * nRows * 3);
+            if (!dstImage) {
+                perror("Failed to allocate memory for destination image");
+                return false;
+            }
 
             // preprocessing for embedding model (MobileNet v2)
             crop_and_interpolate_(const_cast<uint8_t*>(image.data()), 
@@ -338,7 +333,7 @@ namespace app {
                 ctx.Set<std::string>("person_id", identified_person.name);
             }
 
-            // free(dstImage);
+            free(dstImage);
 
         }
 
