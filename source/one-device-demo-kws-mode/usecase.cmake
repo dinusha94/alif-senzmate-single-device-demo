@@ -61,7 +61,7 @@ USER_OPTION(${use_case}_AUDIO_OFFSET "Specify the offset to start reading after 
     STRING)
 
 USER_OPTION(${use_case}_AUDIO_DURATION "Specify the audio duration to load (in seconds). If set to 0 the entire audio will be processed."
-    0
+    2
     STRING)
 
 USER_OPTION(${use_case}_AUDIO_RES_TYPE "Specify re-sampling algorithm to use. By default is 'kaiser_best'."

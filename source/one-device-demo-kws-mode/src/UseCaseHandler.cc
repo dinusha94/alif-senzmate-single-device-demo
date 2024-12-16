@@ -319,6 +319,11 @@ namespace app {
                 return false;
             }
 
+            if (!outputTensor || !outputTensor->data.int8) {
+                printf_err("Invalid output tensor data.\n");
+                return false;
+            }
+
             // Convert the output tensor to a vector of int8
             std::vector<int8_t> int8_feature_vector(outputTensor->data.int8, 
                                                     outputTensor->data.int8 + outputTensor->bytes);
@@ -343,26 +348,18 @@ namespace app {
         }
 
         // Clear the cropped images after processing to prepare for the next set
-        if (croppedImages) {
-            croppedImages->clear(); // Clear the vector of cropped images
-        } else {
-            printf_err("Failed to retrieve cropped_images from context.\n");
-        }
+        croppedImages->clear(); // Clear the vector of cropped images
 
-        if (mode == 0){
-            {
-            ScopedLVGLLock lv_lock;
-            lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "Pose Now !! ");
-
-            } // ScopedLVGLLock
-        }else if (mode == 1)
         {
-           {
             ScopedLVGLLock lv_lock;
-            lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "Recognition score : %.3f", identified_person.similarity);
 
-            } // ScopedLVGLLock
-        }
+            if (mode == 0){
+                lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "Pose Now !! ");
+            }else if (mode == 1)
+            {
+                lv_label_set_text_fmt(ScreenLayoutLabelObject(2), "Recognition score : %.3f", identified_person.similarity);
+            }
+        } // ScopedLVGLLock
 
         return true;
     }
@@ -374,10 +371,10 @@ namespace app {
 
         ScreenLayoutInit(lvgl_image, sizeof lvgl_image, LIMAGE_X, LIMAGE_Y, LV_ZOOM);
         uint32_t lv_lock_state = lv_port_lock();
-        lv_label_set_text_static(ScreenLayoutHeaderObject(), "Person registration App");
-        lv_label_set_text_static(ScreenLayoutLabelObject(0), "Faces Detected: 0");
-        lv_label_set_text_static(ScreenLayoutLabelObject(1), "Registered: 0");
-        lv_label_set_text_static(ScreenLayoutLabelObject(2), "");
+        lv_label_set_text(ScreenLayoutHeaderObject(), "Person registration App");
+        lv_label_set_text(ScreenLayoutLabelObject(0), "Faces Detected: 0");
+        lv_label_set_text(ScreenLayoutLabelObject(1), "Registered: 0");
+        lv_label_set_text(ScreenLayoutLabelObject(2), "");
 
         lv_style_init(&boxStyle);
         lv_style_set_bg_opa(&boxStyle, LV_OPA_TRANSP);
@@ -405,8 +402,7 @@ namespace app {
         write_to_lvgl_buf(LIMAGE_Y, LIMAGE_X, ptr, &lvgl_image[0][0]);
         // Invalidate the image object to refresh the display
         lv_obj_invalidate(ScreenLayoutImageObject());
-        lv_label_set_text_static(ScreenLayoutHeaderObject(), "State you're Name");
-        sleep_or_wait_msec(10);
+        // sleep_or_wait_msec(1000);
     }
 
     /**
@@ -501,7 +497,7 @@ namespace app {
                 return false;
             }
 
-            sleep_or_wait_msec(50);
+            // sleep_or_wait_msec(50);
 
             /* Run inference over this image. */
 
@@ -510,7 +506,7 @@ namespace app {
                 return false;
             }
 
-            sleep_or_wait_msec(50); ////// stuck here
+            // sleep_or_wait_msec(50); ////// stuck here
 
 
             if (!postProcess.DoPostProcess()) {
@@ -533,7 +529,7 @@ namespace app {
             // }
 
             if (mode == 0){
-                lv_label_set_text_fmt(ScreenLayoutHeaderObject(), "MODE: Registration");
+                lv_label_set_text(ScreenLayoutHeaderObject(), "MODE: Registration");
             
                 if (ctx.Get<bool>("face_detected_flag")) {
                     lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Registered: %s", my_name.c_str()); // display the registered person name
@@ -544,7 +540,7 @@ namespace app {
 
             }else if (mode == 1)
             {
-                lv_label_set_text_fmt(ScreenLayoutHeaderObject(), "MODE: Inference");
+                lv_label_set_text(ScreenLayoutHeaderObject(), "MODE: Inference");
                 auto whoAmI = ctx.Get<std::string>("person_id");  // retrieve the person ID
             lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "Name : %s", whoAmI.c_str());
             }
@@ -590,6 +586,15 @@ namespace app {
         }
     }
 
+    /* Use a blocking delay for better synchronizing the ASR process with user interaction */
+    static void BlockingDelay(uint32_t delay_ms) {
+        uint32_t start_time = lv_tick_get();
+        while (lv_tick_get() - start_time < delay_ms) {
+            // Optional: Allow LVGL to handle internal tasks
+            lv_timer_handler(); 
+        }
+    }
+
     /* ASR inference handler. */
     std::string ClassifyAudioHandler(ApplicationContext& ctx, uint32_t mode, bool runAll)
     {
@@ -605,11 +610,14 @@ namespace app {
 
             lv_obj_t *frame = ScreenLayoutImageHolderObject();
             DeleteBoxes(frame);
+            lv_label_set_text(ScreenLayoutHeaderObject(), "");
             lv_label_set_text(ScreenLayoutLabelObject(0), "");
-            ReplaceImageWithBlack();
-            // lv_label_set_text_fmt(ScreenLayoutLabelObject(1), "");
             lv_label_set_text(ScreenLayoutLabelObject(1), "");
-        }
+            ReplaceImageWithBlack();
+            /* wait one second till use identify now he needs to do something */
+            BlockingDelay(800);
+        
+        } // ScopedLVGLLock
 
         if (!model.IsInited()) {
             printf_err("Model is not initialised! Terminating processing.\n");
@@ -662,6 +670,7 @@ namespace app {
         static bool audio_inited;
         std::string finalResultStr;
 
+
         if (!audio_inited) {
             int err = hal_audio_init(16000);  // Initialize audio at 16,000 Hz
             if (err) {
@@ -669,6 +678,15 @@ namespace app {
             }
             audio_inited = true;
         }
+
+        {
+            ScopedLVGLLock lv_lock;
+
+            lv_label_set_text(ScreenLayoutHeaderObject(), "State Your Name Now  \n (in short form) \n you have 2 seconds");
+            /* wait small time for user to read above instruction and speak his name */
+            BlockingDelay(400);
+
+        } // ScopedLVGLLock
        
         /* Loop to process audio clips. */
         do {
@@ -781,6 +799,7 @@ namespace app {
         } while (runAll); 
 
         return finalResultStr;
+        
     }
 
 } /* namespace app */
