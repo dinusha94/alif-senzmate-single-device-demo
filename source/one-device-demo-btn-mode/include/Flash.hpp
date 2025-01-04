@@ -108,6 +108,20 @@ int32_t flash_send(const FaceEmbeddingCollection &data)
     return ret;
 }
 
+int32_t flash_erase_register()
+{
+    int32_t ret;
+    ARM_FLASH_STATUS flash_status;
+
+    ret = ptrDrvFlash->EraseSector(0xC2000000);
+    do {
+        flash_status = ptrDrvFlash->GetStatus();
+        info("busy \n");
+    } while (flash_status.busy);
+
+    return ret;
+}
+
 int32_t ospi_flash_read_collection(FaceEmbeddingCollection &collection)
 {
     int32_t ret;

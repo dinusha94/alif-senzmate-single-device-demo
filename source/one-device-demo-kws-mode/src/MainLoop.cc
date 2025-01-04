@@ -79,6 +79,7 @@ void user_message_callback(char *message) {
 }
 
 bool last_btn2 = false; 
+bool last_btn3 = false; 
 
 bool run_requested_btn_2(void)
 {
@@ -98,6 +99,28 @@ bool run_requested_btn_2(void)
 
     // Update the last button state
     last_btn2 = new_btn2;
+
+    return ret; // Return whether inference should be run
+}
+
+bool run_requested_btn_3(void)
+{
+    bool ret = false; // Default to no inference
+    bool new_btn3;
+    BOARD_BUTTON_STATE btn_state3;
+
+    // Get the new button state (active low)
+    BOARD_BUTTON2_GetState(&btn_state3);
+    new_btn3 = (btn_state3 == BOARD_BUTTON_STATE_LOW); // true if button is pressed
+
+    // Edge detector - run inference on the positive edge of the button pressed signal
+    if (new_btn3 && !last_btn3) // Check for transition from not pressed to pressed
+    {
+        ret = true; // Inference requested
+    }
+
+    // Update the last button state
+    last_btn3 = new_btn3;
 
     return ret; // Return whether inference should be run
 }
@@ -205,6 +228,13 @@ void main_loop()
     while(1) {
 
         alif::app::ObjectDetectionHandler(caseContext, mode);
+
+        if (run_requested_btn_3()){
+            flash_erase_register();
+            ospi_flash_read_dummy(); // Issue fix
+            info("done erase ............ \n");
+            continue;
+        }
 
         // KWS mode
         if (receivedMessage[0] != '\0') {
