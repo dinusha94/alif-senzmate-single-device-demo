@@ -80,6 +80,7 @@ void user_message_callback(char *message) {
 
 bool last_btn1 = false; 
 bool last_btn2 = false; 
+bool last_btn3 = false; 
 
 bool run_requested_btn_1(void)
 {
@@ -121,6 +122,28 @@ bool run_requested_btn_2(void)
 
     // Update the last button state
     last_btn2 = new_btn2;
+
+    return ret; // Return whether inference should be run
+}
+
+bool run_requested_btn_3(void)
+{
+    bool ret = false; // Default to no inference
+    bool new_btn3;
+    BOARD_BUTTON_STATE btn_state3;
+
+    // Get the new button state (active low)
+    BOARD_BUTTON2_GetState(&btn_state3);
+    new_btn3 = (btn_state3 == BOARD_BUTTON_STATE_LOW); // true if button is pressed
+
+    // Edge detector - run inference on the positive edge of the button pressed signal
+    if (new_btn3 && !last_btn3) // Check for transition from not pressed to pressed
+    {
+        ret = true; // Inference requested
+    }
+
+    // Update the last button state
+    last_btn3 = new_btn3;
 
     return ret; // Return whether inference should be run
 }
@@ -228,6 +251,14 @@ void main_loop()
 
         alif::app::ObjectDetectionHandler(caseContext, mode);
 
+        /* erase registration data if needed */
+        if (run_requested_btn_3()){
+            flash_erase_register();
+            ospi_flash_read_dummy(); // Issue fix
+            info("done erase ............ \n");
+            continue;
+        }
+
         // Button press mode    
         if (run_requested_btn_1())
         {   
@@ -288,6 +319,13 @@ void main_loop()
             if (last_mode != mode){
                 // retrieve the person registration data
                 ret = ospi_flash_read_collection(stored_collection);
+
+                if (ret == -10){
+                    // no registration data found, switch back to registration
+                    mode = 0;
+                    continue;
+                }
+                
                 // stored_collection.PrintEmbeddings();
                 /* Save the face embedding collection in context */
                 caseContext.Set<FaceEmbeddingCollection&>("recorded_face_embedding_collection", stored_collection);

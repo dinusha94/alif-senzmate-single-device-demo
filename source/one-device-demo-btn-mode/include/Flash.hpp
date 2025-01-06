@@ -55,6 +55,11 @@ FaceEmbeddingCollection Deserialize(const std::vector<uint8_t> &buffer) {
     std::memcpy(&numPersons, &buffer[offset], sizeof(numPersons));
     offset += sizeof(numPersons);
 
+    if (numPersons == -1){
+        // return empty collection
+        return collection;
+    }
+
     for (uint32_t i = 0; i < numPersons; ++i) {
         FaceEmbedding face;
 
@@ -153,8 +158,16 @@ int32_t ospi_flash_read_collection(FaceEmbeddingCollection &collection)
 
     // Deserialize the data into a FaceEmbeddingCollection object
     collection = Deserialize(serializedData);
+
+     if (collection.embeddings.empty()) {
+        return -10; 
+    }
+    else{
+        return ret; 
+    }
  
-    return ret; 
+ 
+    // return ret; 
 }
 
 void ospi_flash_read_dummy()

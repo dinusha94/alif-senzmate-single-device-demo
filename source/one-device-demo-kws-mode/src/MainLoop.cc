@@ -302,6 +302,13 @@ void main_loop()
             if (last_mode != mode){
                 // retrieve the person registration data
                 ret = ospi_flash_read_collection(stored_collection);
+
+                if (ret == -10){
+                    // no registration data found, switch back to registration
+                    mode = 0;
+                    continue;
+                }
+
                 // stored_collection.PrintEmbeddings();
                 /* Save the face embedding collection in context */
                 caseContext.Set<FaceEmbeddingCollection&>("recorded_face_embedding_collection", stored_collection);
